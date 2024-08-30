@@ -1,0 +1,15 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+gql = {extras = ["requests"], version = "==3.4.1"}
+requests = "*"
+base58 = "*"
+
+[requires]
+python_version = "3.12"
+
+[dev-packages]
+pytest = "*"
