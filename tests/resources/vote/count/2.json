@@ -1,0 +1,38 @@
+{
+    "123": {
+      "yes_votes": {
+        "count": 1,
+        "addresses": [
+          "B62qmowAM6y5BoBLXqXi47fXn1yVUcx4o3j6DW36k11yUPp5CimcbBU"
+        ]
+      },
+      "no_votes": {
+        "count": 0,
+        "addresses": []
+      }
+    },
+    "12": {
+      "yes_votes": {
+        "count": 1,
+        "addresses": [
+          "B62qmowAM6y5BoBLXqXi47fXn1yVUcx4o3j6DW36k11yUPp5CimcbBU"
+        ]
+      },
+      "no_votes": {
+        "count": 0,
+        "addresses": []
+      }
+    },
+    "99": {
+      "yes_votes": {
+        "count": 1,
+        "addresses": [
+          "B62qmowAM6y5BoBLXqXi47fXn1yVUcx4o3j6DW36k11yUPp5CimcbBU"
+        ]
+      },
+      "no_votes": {
+        "count": 0,
+        "addresses": []
+      }
+    }
+  }

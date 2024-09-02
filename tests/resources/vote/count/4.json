@@ -1,0 +1,38 @@
+{
+  "123": {
+    "yes_votes": {
+      "count": 2,
+      "addresses": [
+        "B62qmowAM6y5BoBLXqXi47fXn1yVUcx4o3j6DW36k11yUPp5CimcbBU",
+        "B62qjiqwTywewvJHB7iMRWkqk89AS1jWTYxK7wFKUnLfqzKFe9DbvRy"
+      ]
+    },
+    "no_votes": {
+      "count": 0,
+      "addresses": []
+    }
+  },
+  "12": {
+    "yes_votes": {
+      "count": 2,
+      "addresses": [
+        "B62qmowAM6y5BoBLXqXi47fXn1yVUcx4o3j6DW36k11yUPp5CimcbBU",
+        "B62qp4rKxokWke752YNzKsG2sZe1PULhvTfXmwNsrK1CQovKUy725Dj"
+      ]
+    },
+    "no_votes": {
+      "count": 1,
+      "addresses": ["B62qjiqwTywewvJHB7iMRWkqk89AS1jWTYxK7wFKUnLfqzKFe9DbvRy"]
+    }
+  },
+  "99": {
+    "yes_votes": {
+      "count": 0,
+      "addresses": []
+    },
+    "no_votes": {
+      "count": 1,
+      "addresses": ["B62qmowAM6y5BoBLXqXi47fXn1yVUcx4o3j6DW36k11yUPp5CimcbBU"]
+    }
+  }
+}
