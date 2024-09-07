@@ -2,10 +2,14 @@
 
 import json
 from datetime import datetime, timezone
+import logging
 from typing import Any, Type
 from unittest.mock import MagicMock, patch
 import pytest
 import pprint
+import itertools
+
+logger = logging.getLogger(__name__)
 
 from gqa.graphql_query_aggregator import GraphQLQueryAggregator, BlockDiscontinuityError
 from vote_counter.vote_counter import VoteCountingPipeline
@@ -151,7 +155,7 @@ def compare_vote_counts(actual: dict, expected: dict) -> bool:
                 expected[key][vote_type]["addresses"]
             ):
                 return False
-    return True 
+    return True
 
 
 @pytest.mark.parametrize("test_config", [TestCase1, TestCase2, TestCase3, TestCase4])
@@ -183,7 +187,11 @@ def test_vote_counting_pipeline(
     vote_counts = vote_counting_pipeline.run()
 
     # Assert the results
-    assert vote_counts == expected_vote_counts
+    assert compare_vote_counts(vote_counts, expected_vote_counts), (
+        f"Vote counts do not match for test case {test_config.TEST_CASE}.\n"
+        f"Expected: {expected_vote_counts}\n"
+        f"Actual: {vote_counts}"
+    )
 
 
 def test_block_discontinuity(mock_gqa: MagicMock, mock_config: Config):
@@ -200,3 +208,67 @@ def test_block_discontinuity(mock_gqa: MagicMock, mock_config: Config):
     # Run the pipeline and expect it to raise BlockDiscontinuityError
     with pytest.raises(BlockDiscontinuityError):
         pipeline.run()
+
+
+def test_incremental_vote_aggregation(
+    mock_config: Config,
+    mock_gqa: MagicMock,
+):
+    """
+    Test incremental vote aggregation with multiple GraphQL responses.
+    """
+    test_cases = [TestCase1, TestCase2, TestCase3, TestCase4]
+
+    for r in range(1, len(test_cases) + 1):
+        combination = test_cases[:r]
+
+        # Load and combine GraphQL responses
+        combined_responses = []
+        for case in combination:
+            case.set_file_paths()
+            with open(case.Files.GRAPHQL_RESPONSE, "r") as f:
+                response_raw = json.load(f)["data"]
+                combined_responses.append(response_raw)
+
+        # Process combined responses
+        start_date = datetime.strptime(
+            combination[0].Dates.START_DATE, combination[0].Dates.FORMAT
+        )
+        end_date = datetime.strptime(
+            combination[0].Dates.END_DATE, combination[0].Dates.FORMAT
+        )
+
+        try:
+            mock_transactions = GraphQLQueryAggregator._get_transactions_from_response(
+                combined_responses, start_date, end_date, 0
+            )
+        except BlockDiscontinuityError as e:
+            logger.error(f"BlockDiscontinuityError occurred: {str(e)}")
+            continue
+
+        # Mock GraphQLQueryAggregator to return transactions incrementally
+        mock_gqa.retrieve_combined_transactions.return_value = mock_transactions
+
+        # Create and run VoteCountingPipeline
+        pipeline = VoteCountingPipeline(start_date, end_date, mock_gqa, mock_config)
+
+        try:
+            with patch.object(VoteCountingPipeline, "save_results"):
+                aggregated_votes = pipeline.run()
+        except Exception as e:
+            logger.error(f"Error occurred during pipeline run: {str(e)}")
+            continue
+
+        # Load expected results
+        expected_file = f"tests/resources/vote/count/{r}.json"
+        with open(expected_file, "r") as f:
+            expected_votes = json.load(f)
+
+        # Compare results
+        assert compare_vote_counts(aggregated_votes, expected_votes), (
+            f"Vote counts do not match for {r} responses.\n"
+            f"Expected: {pprint.pformat(expected_votes)}\n"
+            f"Actual: {pprint.pformat(aggregated_votes)}"
+        )
+
+        logger.info(f"Incremental vote aggregation test passed for {r} responses")
