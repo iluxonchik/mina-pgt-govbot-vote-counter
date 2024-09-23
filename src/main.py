@@ -16,6 +16,7 @@ from vote_counter.vote_counter import VoteCountingPipeline
 from vote_counter.graphql_client import GraphQLClient
 from vote_counter.config import Config
 from gqa.graphql_query_aggregator import GraphQLQueryAggregator, BlockDiscontinuityError
+from vote_counter.stake_counter import StakeCountingPipeline
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -63,6 +64,21 @@ def parse_arguments() -> argparse.Namespace:
         "--output", help="Output file for vote counts (overrides config)"
     )
 
+    # Add new count_stake command
+    count_stake_parser = subparsers.add_parser(
+        "count_stake", help="Count vote stakes from stored data"
+    )
+    count_stake_parser.add_argument(
+        "--input",
+        default="vote_counts.json",
+        help="Input file with vote counts (default: vote_counts.json)",
+    )
+    count_stake_parser.add_argument(
+        "--output",
+        default="vote_stake_info.json",
+        help="Output file for stake information (default: vote_stake_info.json)",
+    )
+
     return parser.parse_args()
 
 
@@ -103,6 +119,26 @@ def run_vote_counting(args: argparse.Namespace, config: Config) -> None:
         sys.exit(1)
 
 
+def run_stake_counting(args: argparse.Namespace, config: Config) -> None:
+    """Run the Stake Counting mode."""
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"Input file: {args.input}")
+    logger.info(f"Output file: {args.output}")
+
+    client = GraphQLClient(config.GRAPHQL_ENDPOINT)
+    pipeline = StakeCountingPipeline(client, config)
+
+    try:
+        stake_info = pipeline.run(args.input, args.output)
+        logger.info(
+            f"Stake counting completed successfully. Results saved to {args.output}"
+        )
+    except Exception as e:
+        logger.error(f"Stake counting failed: {str(e)}")
+        sys.exit(1)
+
+
 def main() -> None:
     """Main function to run the GovBot Vote Counter."""
     args = parse_arguments()
@@ -116,6 +152,8 @@ def main() -> None:
             run_query_aggregator(config)
         elif args.command == "count":
             run_vote_counting(args, config)
+        elif args.command == "count_stake":
+            run_stake_counting(args, config)
 
     except Exception as e:
         logger.exception(f"An error occurred: {str(e)}")

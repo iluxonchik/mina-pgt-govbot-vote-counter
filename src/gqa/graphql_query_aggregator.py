@@ -44,7 +44,7 @@ class GraphQLQueryAggregator:
       }
     }
     """
-    MAX_LENGTH = 100000
+    MAX_LENGTH = 100000000
 
     def __init__(
         self,
@@ -120,24 +120,35 @@ class GraphQLQueryAggregator:
         recent_blocks_to_ignore: int,
     ) -> List[Dict[str, Any]]:
         combined_transactions = []
-        all_blocks = []
+        all_blocks = {}
 
-        # Collect all blocks from all responses
-        for response in responses:
-            all_blocks.extend(response["bestChain"])
+        # Sort responses by execution timestamp (most recent first)
+        sorted_responses = sorted(
+            responses, key=lambda r: r.get("execution_timestamp", ""), reverse=True
+        )
 
-        # Sort all blocks by their height
-        all_blocks.sort(
-            key=lambda b: int(b["protocolState"]["consensusState"]["blockHeight"])
+        # Collect blocks from all responses, keeping only the most recent version of each block
+        for response in sorted_responses:
+            for block in response["bestChain"]:
+                block_height = int(
+                    block["protocolState"]["consensusState"]["blockHeight"]
+                )
+                if block_height not in all_blocks:
+                    all_blocks[block_height] = block
+
+        # Convert the dictionary to a sorted list
+        sorted_blocks = sorted(
+            all_blocks.values(),
+            key=lambda b: int(b["protocolState"]["consensusState"]["blockHeight"]),
         )
 
         # Check for block continuity
-        for i in range(1, len(all_blocks)):
+        for i in range(1, len(sorted_blocks)):
             prev_height = int(
-                all_blocks[i - 1]["protocolState"]["consensusState"]["blockHeight"]
+                sorted_blocks[i - 1]["protocolState"]["consensusState"]["blockHeight"]
             )
             curr_height = int(
-                all_blocks[i]["protocolState"]["consensusState"]["blockHeight"]
+                sorted_blocks[i]["protocolState"]["consensusState"]["blockHeight"]
             )
             if curr_height != prev_height + 1:
                 raise BlockDiscontinuityError(
@@ -146,9 +157,9 @@ class GraphQLQueryAggregator:
 
         # Process blocks within the time range
         for block in (
-            all_blocks[:-recent_blocks_to_ignore]
+            sorted_blocks[:-recent_blocks_to_ignore]
             if recent_blocks_to_ignore > 0
-            else all_blocks
+            else sorted_blocks
         ):
             block_timestamp = int(block["protocolState"]["blockchainState"]["date"])
 
@@ -175,10 +186,11 @@ class GraphQLQueryAggregator:
                     self.client.endpoint,
                 ),
             )
-            responses: list[dict] = cursor.fetchall()
+            responses: list[str] = cursor.fetchall()
+            responses_as_dicts = [json.loads(response[0]) for response in responses]
 
         combined_transactions = self._get_transactions_from_response(
-            responses, start_time, end_time, self.recent_blocks_to_ignore
+            responses_as_dicts, start_time, end_time, self.recent_blocks_to_ignore
         )
 
         # Log the total number of transactions retrieved
