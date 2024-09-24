@@ -3,6 +3,7 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, List, Dict, Optional
+import os
 
 from vote_counter.graphql_client import GraphQLClient
 
@@ -112,12 +113,61 @@ class GraphQLQueryAggregator:
             f"Stored GraphQL response with execution timestamp: {execution_timestamp}"
         )
 
+    def retrieve_and_store_from_file(self, file_path: str) -> None:
+        """
+        Retrieve GraphQL response from a JSON file and store it in the database.
+
+        Args:
+            file_path (str): Path to the JSON file containing the GraphQL response.
+        """
+        self.logger.info(f"Retrieving GraphQL response from file: {file_path}")
+
+        try:
+            with open(file_path, "r") as f:
+                result = json.load(f)
+        except FileNotFoundError:
+            self.logger.error(f"File not found: {file_path}")
+            raise
+        except json.JSONDecodeError:
+            self.logger.error(f"Invalid JSON in file: {file_path}")
+            raise
+
+        execution_timestamp = datetime.now(timezone.utc).isoformat()
+        min_block_timestamp = None
+        max_block_timestamp = None
+
+        for block in result.get("bestChain", []):
+            block_timestamp = int(block["protocolState"]["blockchainState"]["date"])
+            if min_block_timestamp is None or block_timestamp < min_block_timestamp:
+                min_block_timestamp = block_timestamp
+            if max_block_timestamp is None or block_timestamp > max_block_timestamp:
+                max_block_timestamp = block_timestamp
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT INTO graphql_responses (execution_timestamp, response, min_block_timestamp, max_block_timestamp, endpoint) VALUES (?, ?, ?, ?, ?)",
+                (
+                    execution_timestamp,
+                    json.dumps(result),
+                    min_block_timestamp,
+                    max_block_timestamp,
+                    os.path.abspath(
+                        file_path
+                    ),  # Use the full path of the file as the endpoint
+                ),
+            )
+
+        self.logger.info(
+            f"Stored GraphQL response from file with execution timestamp: {execution_timestamp}"
+        )
+
     @staticmethod
     def _get_transactions_from_response(
         responses: list[dict],
         start_time: datetime,
         end_time: datetime,
         recent_blocks_to_ignore: int,
+        logger: logging.Logger,
     ) -> List[Dict[str, Any]]:
         combined_transactions = []
         all_blocks = {}
@@ -141,6 +191,36 @@ class GraphQLQueryAggregator:
             all_blocks.values(),
             key=lambda b: int(b["protocolState"]["consensusState"]["blockHeight"]),
         )
+
+        # Log the oldest and most recent block times and block numbers
+        if sorted_blocks:
+            oldest_block = sorted_blocks[0]
+            newest_block = sorted_blocks[-1]
+
+            oldest_block_time = datetime.fromtimestamp(
+                int(oldest_block["protocolState"]["blockchainState"]["date"]) / 1000,
+                tz=timezone.utc,
+            )
+            oldest_block_number = int(
+                oldest_block["protocolState"]["consensusState"]["blockHeight"]
+            )
+
+            newest_block_time = datetime.fromtimestamp(
+                int(newest_block["protocolState"]["blockchainState"]["date"]) / 1000,
+                tz=timezone.utc,
+            )
+            newest_block_number = int(
+                newest_block["protocolState"]["consensusState"]["blockHeight"]
+            )
+
+            logger.info(
+                f"Oldest block time (UTC): {oldest_block_time.isoformat()}, Block number: {oldest_block_number}"
+            )
+            logger.info(
+                f"Newest block time (UTC): {newest_block_time.isoformat()}, Block number: {newest_block_number}"
+            )
+        else:
+            logger.info("No blocks found in the responses")
 
         # Check for block continuity
         for i in range(1, len(sorted_blocks)):
@@ -179,18 +259,21 @@ class GraphQLQueryAggregator:
     ) -> List[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
-                "SELECT response FROM graphql_responses WHERE min_block_timestamp <= ? AND max_block_timestamp >= ? AND endpoint = ? ORDER BY execution_timestamp",
+                "SELECT response FROM graphql_responses WHERE min_block_timestamp <= ? AND max_block_timestamp >= ? ORDER BY execution_timestamp",
                 (
                     end_time.timestamp() * 1000,
                     start_time.timestamp() * 1000,
-                    self.client.endpoint,
                 ),
             )
             responses: list[str] = cursor.fetchall()
             responses_as_dicts = [json.loads(response[0]) for response in responses]
 
         combined_transactions = self._get_transactions_from_response(
-            responses_as_dicts, start_time, end_time, self.recent_blocks_to_ignore
+            responses_as_dicts,
+            start_time,
+            end_time,
+            self.recent_blocks_to_ignore,
+            self.logger,
         )
 
         # Log the total number of transactions retrieved

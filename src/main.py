@@ -43,13 +43,14 @@ def parse_arguments() -> argparse.Namespace:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Query Aggregator Mode
-    aggregate_parser = subparsers.add_parser(
-        "aggregate", help="Retrieve and store GraphQL query results"
+    # Aggregate command
+    aggregate_parser = subparsers.add_parser("aggregate", help="Aggregate GraphQL data")
+    aggregate_parser.add_argument(
+        "--file", help="Path to JSON file containing GraphQL response", type=str
     )
 
-    # Vote Counting Mode
-    count_parser = subparsers.add_parser("count", help="Count votes from stored data")
+    # Count command
+    count_parser = subparsers.add_parser("count", help="Count votes")
     count_parser.add_argument(
         "start_date",
         type=str,
@@ -64,7 +65,7 @@ def parse_arguments() -> argparse.Namespace:
         "--output", help="Output file for vote counts (overrides config)"
     )
 
-    # Add new count_stake command
+    # Count stake command
     count_stake_parser = subparsers.add_parser(
         "count_stake", help="Count vote stakes from stored data"
     )
@@ -82,15 +83,20 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_query_aggregator(config: Config) -> None:
+def run_query_aggregator(config: Config, file_path: str | None = None) -> None:
     """Run the Query Aggregator mode."""
     logger = logging.getLogger(__name__)
     client = GraphQLClient(config.GRAPHQL_ENDPOINT)
     gqa = GraphQLQueryAggregator(client, config.DB_PATH)
 
-    logger.info(f"Retrieving and storing data from {config.GRAPHQL_ENDPOINT}")
-    gqa.retrieve_and_store()
-    logger.info("Data retrieval and storage completed successfully")
+    if file_path:
+        logger.info(f"Aggregating data from file: {file_path}")
+        gqa.retrieve_and_store_from_file(file_path)
+    else:
+        logger.info("Aggregating data from GraphQL endpoint")
+        gqa.retrieve_and_store()
+
+    logger.info("Query aggregation completed successfully")
 
 
 def run_vote_counting(args: argparse.Namespace, config: Config) -> None:
@@ -149,7 +155,7 @@ def main() -> None:
         config = Config()
 
         if args.command == "aggregate":
-            run_query_aggregator(config)
+            run_query_aggregator(config, args.file)
         elif args.command == "count":
             run_vote_counting(args, config)
         elif args.command == "count_stake":
